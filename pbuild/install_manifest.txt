@@ -1,0 +1,5 @@
+/home/kiran/jevois_packages/jevois_slam/jvpkg/modules/Kiran/Jevois_SLAM/screenshot1.png
+/home/kiran/jevois_packages/jevois_slam/jvpkg/modules/Kiran/Jevois_SLAM/icon.png
+/home/kiran/jevois_packages/jevois_slam/jvpkg/modules/Kiran/Jevois_SLAM/postinstall
+/home/kiran/jevois_packages/jevois_slam/jvpkg/modules/Kiran/Jevois_SLAM/Jevois_SLAM.so
+/home/kiran/jevois_packages/jevois_slam/jvpkg/share/README.txt

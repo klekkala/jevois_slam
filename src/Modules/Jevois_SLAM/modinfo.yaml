@@ -1,0 +1,30 @@
+general: 
+  displayname: evois SLAM 
+  synopsis: JeVois sample module.  
+  description: > 
+    <p>This module is provided as an example of how to create a new standalone
+      module.<p>JeVois provides helper scripts and files to assist you in
+      programming new modules, following two basic formats:<p><p>
+
+  parameters: 
+
+
+authorship: 
+  author: Sample Author
+  email: sampleemail@samplecompany.com
+  mainurl: http://samplecompany.com
+  supporturl: http://samplecompany.com/support
+  otherurl: http://samplecompany.com/about
+  address: 123 First Street, Los Angeles, CA 90012
+
+licensing: 
+  copyright: Copyright (C) 2017 by Sample Author
+  license: GPL v3
+  distribution: Unrestricted
+  restrictions: None
+
+os: 
+  name: Ubuntu
+  version: 16.04.3
+  depends: 
+
