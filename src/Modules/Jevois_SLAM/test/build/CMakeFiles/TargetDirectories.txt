@@ -1,0 +1,3 @@
+/home/kiran/test/build/CMakeFiles/edit_cache.dir
+/home/kiran/test/build/CMakeFiles/DisplayImage.dir
+/home/kiran/test/build/CMakeFiles/rebuild_cache.dir
