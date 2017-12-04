@@ -8,7 +8,7 @@
 #include <iostream>
 #include <vector>
 
-#include <arm_neon.h>
+#include "arm_neon.h"
 
 #include "Util.h"
 

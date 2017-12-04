@@ -9,7 +9,7 @@
 #include <vector>
 #include <cassert>
 
-#include <arm_neon.h>
+#include "arm_neon.h"
 
 #include "Brief.h"
 #include "Util.h"

@@ -3,14 +3,14 @@ general:
   synopsis: JeVois sample module.  
   description: > 
     <p>This module is provided as an example of how to create a new standalone
-      module.<p>JeVois provides helper scripts and files to assist you in
-      programming new modules, following two basic formats:<p><p>
+      module. JeVois provides helper scripts and files to assist you in
+      programming new modules, following two basic formats:
 
   parameters: 
 
 
 authorship: 
-  author: Sample Author
+  author: 
   email: sampleemail@samplecompany.com
   mainurl: http://samplecompany.com
   supporturl: http://samplecompany.com/support

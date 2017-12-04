@@ -18,7 +18,8 @@
 #include "Fast.h"
 #include "Util.h"
 #include "Orb.h"
-
+#include "Gaussian.h"
+#include "Bilinear.h"
 #include <png.h>
 
 #include <cstdlib>
@@ -26,8 +27,12 @@
 #include <iostream>
 #include <ctime>
 #include <cassert>
+#include <jevois/Debug/Log.H>
+#include <jevois/Debug/Timer.H>
+#include <jevois/Image/RawImageOps.H>
 #include <jevois/Core/Module.H>
 #include <jevois/Image/RawImageOps.H>
+#include <jevois/Types/BoundedBuffer.H>
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
@@ -37,15 +42,12 @@
 
 //! JeVois sample module
 /*! This module is provided as an example of how to create a new standalone module.
-
     JeVois provides helper scripts and files to assist you in programming new modules, following two basic formats:
-
     - if you wish to only create a single module that will execute a specific function, or a collection of such modules
       where there is no shared code between the modules (i.e., each module does things that do not relate to the other
       modules), use the skeleton provided by this sample module. Here, all the code for the sample module is compiled
       into a single shared object (.so) file that is loaded by the JeVois engine when the corresponding video output
       format is selected by the host computer.
-
     - if you are planning to write a collection of modules with some shared algorithms among several of the modules, it
       is better to first create machine vision Components that implement the algorithms that are shared among several of
       your modules. You would then compile all your components into a first shared library (.so) file, and then compile
@@ -54,9 +56,7 @@
       example for how to achieve that, where libjevoisbase.so contains code for Saliency, ObjectRecognition, etc
       components that are used in several modules, and each module's .so file contains only the code specific to that
       module.
-
     @author Sample Author
-
     @videomapping YUYV 640 480 28.5 YUYV 640 480 28.5 SampleVendor Jevois_SLAM
     @email sampleemail\@samplecompany.com
     @address 123 First Street, Los Angeles, CA 90012
@@ -71,121 +71,143 @@ class Jevois_SLAM : public jevois::Module
 {
   public:
     //! Default base class constructor ok
-    using jevois::Module::Module;
+    Jevois_SLAM(std::string const & instance) : jevois::Module(instance), itsRunning(true)
+    { }
 
     //! Virtual destructor for safe inheritance
     virtual ~Jevois_SLAM() { }
 
     //! Processing function
-    virtual void process(jevois::InputFrame && inframe, jevois::OutputFrame && outframe) override
+    virtual void process(jevois::InputFrame && inframe) override
     {
       static int pyramidLevels[16] = {
-        640, 480,
-        533, 400,
-        444, 333,
-        370, 278,
-        309, 231,
-        257, 193,
-        214, 161,
-        179, 134
+          640, 480,
+          520, 390,
+          455, 341,
+          370, 277,
+          324, 242,
+          263, 197,
+          230, 172,
+          187, 140
       };
 
-      // Wait for next available camera image:
-      jevois::RawImage const inimg = inframe.get(true);
+      jevois::RawImage inimg = inframe.get(); unsigned int const w = inimg.width, h = inimg.height;
+	      cv::Mat src = jevois::rawimage::convertToCvGray(inimg);
 
-      // We only support YUYV pixels in this example, any resolution:
-      inimg.require("input", inimg.width, inimg.height, V4L2_PIX_FMT_YUYV);
-      
-      // Let camera know we are done processing the input image:
-      inframe.done(); // NOTE: optional here, inframe destructor would call it anyway
+	      //itsProcessingTimer.start();
+	      // Let camera know we are done processing the input image:
+	      inframe.done(); // NOTE: optional here, inframe destructor would call it anyway
+	      
+      while(itsRunning.load()){
+	      //static jevois::Timer itsProcessingTimer("Processing");
+	      // Wait for next available camera image:
+	      
 
-      // Wait for an image from our gadget driver into which we will put our results:
-      jevois::RawImage outimg = outframe.get();
+	      //Using L2 cache smoothing which takes 1ms per 640x480 image
+	      uint32_t pyramidHeight = 2239;
+	      uint8_t (*im)[IMG_W] = (uint8_t (*)[IMG_W])(src.data); 
+	     
+	      uint8_t out[pyramidHeight][IMG_W]; 
+	      std::vector<uint32_t> points;
+	      std::vector<uint32_t> descriptors;
 
-      // Enforce that the input and output formats and image sizes match:
-      outimg.require("output", inimg.width, inimg.height, inimg.fmt);
-      
-      //Copy the pixel data over
-      memcpy(outimg.pixelsw<void>(), inimg.pixels<void>(), std::min(inimg.buf->length(), outimg.buf->length()));
-      // Print a text message:
-      //jevois::rawimage::writeText(outimg, "Hello JeVois!", 100, 230, jevois::yuyv::White, jevois::rawimage::Font20x38);
-      
-      //Currently using opencv for pyramid generation
-      //Will be replaced by L2 cache smoothing which takes 1ms per 640x480 image
-      cv::Mat src = jevois::rawimage::convertToCvGray(inimg);
-      cv::Mat Image = src;
-      int abs_width = src.cols;
-      for(int i = 2; i< 16; i += 2)
-      {
-        //Initialize a new cv::Mat
-        cv::Mat dst(pyramidLevels[i+1], pyramidLevels[i], CV_8UC1);
-        cv::GaussianBlur(src, src, cv::Size(5, 5), 0, 0);
-        cv::resize(src, dst, dst.size(), 0, 0);
-        cv::copyMakeBorder(dst, dst, 0, 0, 0, abs_width-dst.cols, cv::BORDER_CONSTANT, 0);
-        cv::vconcat(Image, dst, Image);
-        src = dst;
-      }
+	      bool flag = false;
+	      const int vstep = 640; 
+	      uint8_t *cam = (uint8_t *)calloc(IMG_W*480, sizeof(uint8_t));
+	      uint8_t *cop = (uint8_t *)calloc(IMG_W*480, sizeof(uint8_t));
+	      uint32_t total = 0;
+	      std::memcpy(cop, im, IMG_W*480*sizeof(uint8_t));
+	      uint8_t (*img)[IMG_W] = (uint8_t (*)[IMG_W])malloc(sizeof(uint8_t[2239][IMG_W]));
+	      std::memcpy(img, cop, IMG_W*480*sizeof(uint8_t));
+	      for (size_t i = 0; i < sizeof(pyramidLevels)/sizeof(*pyramidLevels); i += 2) {
 
-      //Feed in image pyramid to ORB featurure detector
-      uint8_t (*img)[IMG_W];
-      memcpy(img, Image.data, Image.total()*Image.elemSize()*sizeof(uint8_t));
-      /*int j = 0;
-      int index = 0;
-      for(int i = 0; i<Image.cols; i++){
-        img[index++] = Image.at<uchar>(i, j);
-        if(i == Image.cols && j != Image.rows){
-          j++;
-          i = 0;
-        }
-      }*/
+	        pislam::gaussian5x5<vstep>(pyramidLevels[i], pyramidLevels[i+1],
+	          (uint8_t (*)[vstep])cop, (uint8_t (*)[vstep])cop);
 
-      uint32_t pyramidHeight = 0;
-      for (size_t i = 1; i < sizeof(pyramidLevels)/sizeof(*pyramidLevels); i += 2) {
-        pyramidHeight += pyramidLevels[i];
-      }
+	        //Alternate downslampling using 7/8 and 13/16
+	        if(flag)  
+	          pislam::bilinear7_8<vstep>(pyramidLevels[i], pyramidLevels[i+1],
+	                  (uint8_t (*)[vstep])cop, (uint8_t (*)[vstep])cam);
+	        else{pislam::bilinear13_16<vstep>(pyramidLevels[i], pyramidLevels[i+1],
+	                   (uint8_t (*)[vstep])cop, (uint8_t (*)[vstep])cam);
+	        }
+	        
+	        total += pyramidLevels[i+1];
+	        
+	        if(i <= 12){
+	          std::memcpy(img+total, cam, IMG_W*pyramidLevels[i+3]*sizeof(uint8_t));
+	          memset(cop, '0', IMG_W*pyramidLevels[i+3]);
+	          std::memcpy(cop, cam, 640*pyramidLevels[i+3]*sizeof(uint8_t));
+	          memset(cam, '0', IMG_W*pyramidLevels[i+3]);
+	        }
 
-      uint8_t out[pyramidHeight][IMG_W];
-      std::vector<uint32_t> points;
-      std::vector<uint32_t> descriptors;
-      
-      //Start filling in individual levels of a pyramid to compute FAST
-      uint32_t pyramidRow = 0;
-      for (size_t i = 0; i < sizeof(pyramidLevels)/sizeof(*pyramidLevels); i += 2) {
-        uint32_t levelWidth = pyramidLevels[i];
-        uint32_t levelHeight = pyramidLevels[i+1];
+	        flag = !flag;
+	      }
 
-        uint8_t (*imgPtr)[IMG_W] = &img[pyramidRow];
-        uint8_t (*outPtr)[IMG_W] = &out[pyramidRow];
+	      uint32_t pyramidRow = 0;
+	      for (size_t i = 0; i < sizeof(pyramidLevels)/sizeof(*pyramidLevels); i += 2) {
+	        uint32_t levelWidth = pyramidLevels[i];
+	        uint32_t levelHeight = pyramidLevels[i+1];
 
-        pislam::fastDetect<IMG_W, 16>(levelWidth, levelHeight, imgPtr, outPtr, 20);
-        pislam::fastScoreHarris<IMG_W, 16>(levelWidth, levelHeight, imgPtr, 1 << 15, outPtr);
+	        uint8_t (*imgPtr)[IMG_W] = &img[pyramidRow];
+	        uint8_t (*outPtr)[IMG_W] = &out[pyramidRow];
+	        pislam::fastDetect<IMG_W, 16>(levelWidth, levelHeight, imgPtr, outPtr, 20);
+	        pislam::fastScoreHarris<IMG_W, 16>(levelWidth, levelHeight, imgPtr, 1 << 15, outPtr);
 
-        size_t oldSize = points.size();
-        pislam::fastExtract<IMG_W, 16>(levelWidth, levelHeight, outPtr, points);
+	        size_t oldSize = points.size();
+	        pislam::fastExtract<IMG_W, 16>(levelWidth, levelHeight, outPtr, points);
 
-        // Adjust y coordinate to match position in image pyramid.
-        for (auto p = points.begin() + oldSize; p < points.end(); ++ p) {
-          uint32_t x = pislam::decodeFastX(*p);
-          uint32_t y = pislam::decodeFastY(*p) + pyramidRow;
-          uint32_t score = pislam::decodeFastScore(*p);
-          *p = pislam::encodeFast(score, x, y);
-        }
+	        // Adjust y coordinate to match position in image pyramid.
+	        for (auto p = points.begin() + oldSize; p < points.end(); ++ p) {
+	          uint32_t x = pislam::decodeFastX(*p);
+	          uint32_t y = pislam::decodeFastY(*p) + pyramidRow;
+	          uint32_t score = pislam::decodeFastScore(*p);
+	          *p = pislam::encodeFast(score, x, y);
+	        }
+	        pyramidRow += levelHeight;
+	      }
+	      pislam::orbCompute<IMG_W, 8>(img, points, descriptors);
 
-        pyramidRow += levelHeight;
-      }
-      //Process the image
-      pislam::orbCompute<IMG_W, 8>(img, points, descriptors);
+	      //Free all the pointers to memory block
+	      free(img);
+	      free(cam);
+	      free(cop);
 
-      for (uint32_t point: points) {
-        uint32_t x = pislam::decodeFastX(point);
-        uint32_t y = pislam::decodeFastY(point);
-        jevois::rawimage::drawCircle(outimg, x, y, 1, 1, 1);
-      }
+	      //WRite the fps and processing
+	      //std::string const & fpscpu = itsProcessingTimer.stop();
+	      //jevois::rawimage::writeText(outimg, fpscpu, 3, 240 - 13, jevois::yuyv::Black);
 
-      //jevois::rawimage::drawCircle(outimg, 400, 400, 1, 1, 1);
-      // Send the output image with our processing results to the host over USB:
-      outframe.send(); // NOTE: optional here, outframe destructor would call it anyway
+	      //Started to send points
+	      sendSerial(pislam::encode_vecstring(points));
+	      //Done with sending points
+	      sendSerial(" ");
+
+	      //Starting to send descriptors
+	      sendSerial(pislam::encode_vecstring(descriptors));
+	      //Done with sending descriptors
+	      sendSerial(" ");
+	      itsRunning.store(false);
+	  }
+
     }
+
+
+
+    // ####################################################################################################
+    //! Receive a string from a serial port which contains a user command
+    // ####################################################################################################
+    void parseSerial(std::string const & str, std::shared_ptr<jevois::UserInterface> s) override
+    {
+      if (str == "go")
+      {
+        itsRunning.store(true);
+        //sendSerial("START");
+      }
+     
+      else throw std::runtime_error("Unsupported module command");
+    }
+
+    std::atomic<bool> itsRunning;
 };
 
 // Allow the module to be loaded as a shared object (.so) file:
